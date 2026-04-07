@@ -8,12 +8,13 @@ import PredictionPanel from "./components/PredictionPanel";
 import PollPanel from "./components/PollPanel";
 import PollAdmin from "./components/PollAdmin";
 import LegislativePanel from "./components/LegislativePanel";
+import HelpGuide from "./components/HelpGuide";
 import { getElections, getElection, getRegions } from "./api/client";
 
-const TABS = ["總覽", "地圖", "國會", "民調", "趨勢", "比較", "2026預測", "管理"];
+const TABS = ["總覽", "地圖", "國會", "民調", "趨勢", "比較", "2026預測", "管理", "說明"];
 
 // Tabs that don't need the sidebar
-const NO_SIDEBAR = ["總覽", "國會", "2026預測", "管理"];
+const NO_SIDEBAR = ["總覽", "國會", "2026預測", "管理", "說明"];
 
 export default function App() {
   const [elections, setElections] = useState([]);
@@ -96,6 +97,7 @@ export default function App() {
           )}
           {activeTab === "2026預測" && <PredictionPanel />}
           {activeTab === "管理" && <PollAdmin regions={regions} />}
+          {activeTab === "說明" && <HelpGuide />}
         </main>
       </div>
     </div>
