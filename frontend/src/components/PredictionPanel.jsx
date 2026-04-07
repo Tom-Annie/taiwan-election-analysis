@@ -256,6 +256,14 @@ function RegionDetail({ pred }) {
           <span style={styles.badgeOutline}>
             信心度 {pred.confidence}%
           </span>
+          <span style={{
+            ...styles.badgeOutline,
+            backgroundColor: pred.data_quality === "real_polls" ? "#d4edda" : pred.data_quality === "simulated_polls" ? "#fff3cd" : "#f8d7da",
+            borderColor: "transparent",
+            color: pred.data_quality === "real_polls" ? "#155724" : pred.data_quality === "simulated_polls" ? "#856404" : "#721c24",
+          }}>
+            {pred.data_quality === "real_polls" ? `真實民調 ×${pred.poll_count}` : pred.data_quality === "simulated_polls" ? "模擬民調" : "純歷史模型"}
+          </span>
         </div>
       </div>
 
@@ -315,15 +323,37 @@ function RegionDetail({ pred }) {
         </div>
       )}
 
+      {/* Poll vs Model comparison */}
+      {pred.poll_vs_model && Object.keys(pred.poll_vs_model).length > 0 && (
+        <div style={styles.rateSection}>
+          <h4 style={styles.sectionTitle}>民調 vs 模型預測差距</h4>
+          {Object.entries(pred.poll_vs_model).map(([party, data]) => {
+            const short = PARTY_SHORT[party] || party;
+            const color = PARTY_COLORS[party] || "#999";
+            const diffColor = data.diff > 0 ? "#1B9431" : data.diff < 0 ? "#e74c3c" : "#888";
+            return (
+              <div key={party} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px", fontSize: "0.85rem" }}>
+                <span style={{ ...styles.dot, backgroundColor: color }} />
+                <span style={{ width: "55px" }}>{short}</span>
+                <span style={{ width: "80px" }}>民調 {data.poll}%</span>
+                <span style={{ width: "80px" }}>模型 {data.model}%</span>
+                <span style={{ color: diffColor, fontWeight: "bold" }}>
+                  {data.diff > 0 ? "+" : ""}{data.diff}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Model factors */}
       <div style={styles.factorBox}>
         <h4 style={styles.sectionTitle}>模型參數</h4>
         <div style={styles.factorGrid}>
-          <div>地方選舉歷史權重: <strong>{pred.factors.local_history_weight * 100}%</strong></div>
-          <div>總統基本盤權重: <strong>{pred.factors.presidential_base_weight * 100}%</strong></div>
-          <div>執政黨鐘擺效應: <strong>{pred.factors.pendulum_effect}%</strong></div>
+          <div>民調權重: <strong>{(pred.factors.poll_weight * 100).toFixed(0)}%</strong></div>
+          <div>歷史趨勢權重: <strong>{(pred.factors.history_weight * 100).toFixed(0)}%</strong></div>
+          <div>總統基本盤權重: <strong>{(pred.factors.presidential_weight * 100).toFixed(0)}%</strong></div>
           <div>在任者優勢: <strong>+{pred.factors.incumbency_bonus}%</strong></div>
-          <div>民眾黨成長修正: <strong>+{pred.factors.tpp_growth}%</strong></div>
         </div>
       </div>
     </div>

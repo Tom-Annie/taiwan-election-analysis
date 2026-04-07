@@ -85,8 +85,9 @@ class Poll(Base):
     source = Column(String, nullable=False)  # 民調機構
     sample_size = Column(Integer)
     margin_of_error = Column(Float)
+    is_simulated = Column(Integer, default=0)  # 0=真實, 1=模擬
 
-    items = relationship("PollItem", back_populates="poll")
+    items = relationship("PollItem", back_populates="poll", cascade="all, delete-orphan")
     region = relationship("Region")
 
 

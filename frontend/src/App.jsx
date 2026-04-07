@@ -5,9 +5,10 @@ import TrendChart from "./components/TrendChart";
 import ComparePanel from "./components/ComparePanel";
 import PredictionPanel from "./components/PredictionPanel";
 import PollPanel from "./components/PollPanel";
+import PollAdmin from "./components/PollAdmin";
 import { getElections, getElection, getRegions } from "./api/client";
 
-const TABS = ["地圖", "民調", "趨勢", "比較", "2026預測"];
+const TABS = ["地圖", "民調", "趨勢", "比較", "2026預測", "管理"];
 
 export default function App() {
   const [elections, setElections] = useState([]);
@@ -89,6 +90,9 @@ export default function App() {
           )}
           {activeTab === "2026預測" && (
             <PredictionPanel />
+          )}
+          {activeTab === "管理" && (
+            <PollAdmin regions={regions} />
           )}
         </main>
       </div>

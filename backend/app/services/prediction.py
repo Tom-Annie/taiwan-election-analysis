@@ -1,9 +1,11 @@
-"""預測服務 — 2026 縣市長選舉預測模型
+"""預測服務 — 2026 縣市長選舉預測模型 v2
 
-方法：加權歷史趨勢 + 總統選舉鐘擺效應 + 在任者優勢/劣勢
-- 近期選舉權重較高 (2022 > 2018 > 2014)
-- 參考最近一次總統大選 (2024) 的該區政黨基本盤
-- 考慮執政黨通常在地方選舉的鐘擺效應
+三層訊號源：
+1. 民調（有真實民調時權重最高）
+2. 歷屆地方選舉趨勢
+3. 2024 總統選舉基本盤
+
+權重動態調整：有民調 → 民調主導；無民調 → 回退歷史模型
 """
 
 from sqlalchemy.orm import Session
@@ -11,7 +13,6 @@ from .. import models
 import numpy as np
 
 
-# 2022 當選者 (region_code -> (name, party))
 INCUMBENTS_2022 = {
     "TPE": ("蔣萬安", "中國國民黨"),
     "NTC": ("侯友宜", "中國國民黨"),
@@ -37,19 +38,17 @@ INCUMBENTS_2022 = {
     "LIE": ("王忠銘", "中國國民黨"),
 }
 
-# 主要政黨
 MAJOR_PARTIES = ["民主進步黨", "中國國民黨", "台灣民眾黨"]
 
 
 def _get_local_party_rates(db: Session, region_code: str) -> dict[int, dict[str, float]]:
-    """取得該區域歷屆地方選舉各黨得票率"""
+    """歷屆地方選舉各黨得票率"""
     local_elections = (
         db.query(models.Election)
         .filter(models.Election.type == "local")
         .order_by(models.Election.year)
         .all()
     )
-
     history = {}
     for election in local_elections:
         results = (
@@ -62,19 +61,17 @@ def _get_local_party_rates(db: Session, region_code: str) -> dict[int, dict[str,
         )
         if not results:
             continue
-
         party_rates = {}
         for r in results:
             if r.candidate:
                 party = r.candidate.party or "無黨籍"
                 party_rates[party] = party_rates.get(party, 0) + (r.vote_rate or 0)
         history[election.year] = party_rates
-
     return history
 
 
 def _get_presidential_base(db: Session, region_code: str) -> dict[str, float]:
-    """取得 2024 總統大選該區各黨得票率作為基本盤"""
+    """2024 總統大選各黨得票率"""
     election = (
         db.query(models.Election)
         .filter(models.Election.year == 2024, models.Election.type == "presidential")
@@ -82,7 +79,6 @@ def _get_presidential_base(db: Session, region_code: str) -> dict[str, float]:
     )
     if not election:
         return {}
-
     results = (
         db.query(models.RegionResult)
         .filter(
@@ -91,86 +87,151 @@ def _get_presidential_base(db: Session, region_code: str) -> dict[str, float]:
         )
         .all()
     )
+    return {
+        (r.candidate.party or "無黨籍"): (r.vote_rate or 0)
+        for r in results if r.candidate
+    }
 
+
+def _get_poll_rates(db: Session, region_code: str) -> tuple[dict[str, float], int, bool]:
+    """取得該區最新民調支持率（優先真實民調）
+
+    Returns: (party_rates, poll_count, has_real)
+    """
+    # 真實民調優先
+    real_polls = (
+        db.query(models.Poll)
+        .filter(
+            models.Poll.region_code == region_code,
+            models.Poll.is_simulated == 0,
+        )
+        .order_by(models.Poll.date.desc())
+        .limit(3)
+        .all()
+    )
+
+    if real_polls:
+        polls = real_polls
+        has_real = True
+    else:
+        polls = (
+            db.query(models.Poll)
+            .filter(models.Poll.region_code == region_code)
+            .order_by(models.Poll.date.desc())
+            .limit(3)
+            .all()
+        )
+        has_real = False
+
+    if not polls:
+        return {}, 0, False
+
+    # 加權平均最近 N 筆民調（越新權重越高）
+    weights = [0.5, 0.3, 0.2][:len(polls)]
     party_rates = {}
-    for r in results:
-        if r.candidate:
-            party = r.candidate.party or "無黨籍"
-            party_rates[party] = r.vote_rate or 0
-    return party_rates
+    weight_total = sum(weights)
+
+    for poll, w in zip(polls, weights):
+        for item in poll.items:
+            party = item.party
+            if party not in party_rates:
+                party_rates[party] = 0
+            party_rates[party] += item.support_rate * w / weight_total
+
+    return party_rates, len(polls), has_real
+
+
+def _compute_historical_score(
+    local_history: dict, pres_base: dict, party: str
+) -> float:
+    """純歷史模型分數"""
+    weights = {2022: 0.50, 2018: 0.30, 2014: 0.20}
+    weighted_sum = 0
+    weight_total = 0
+    for year, w in weights.items():
+        if year in local_history and party in local_history[year]:
+            weighted_sum += local_history[year][party] * w
+            weight_total += w
+
+    local_trend = weighted_sum / weight_total if weight_total > 0 else 0
+    pres_rate = pres_base.get(party, 0)
+
+    # 地方趨勢 60% + 總統基本盤 40%
+    return local_trend * 0.6 + pres_rate * 0.4
 
 
 def predict_region(db: Session, region_code: str) -> dict:
-    """預測單一縣市 2026 選舉結果"""
-
+    """預測單一縣市"""
     region = db.query(models.Region).filter(models.Region.code == region_code).first()
     if not region:
         return None
 
-    # 1. 歷屆地方選舉得票率
     local_history = _get_local_party_rates(db, region_code)
-    # 2. 總統選舉基本盤
     pres_base = _get_presidential_base(db, region_code)
-    # 3. 現任者
     incumbent = INCUMBENTS_2022.get(region_code)
+    poll_rates, poll_count, has_real_polls = _get_poll_rates(db, region_code)
 
-    # 加權計算：2022 權重 0.50, 2018 權重 0.30, 2014 權重 0.20
-    weights = {2022: 0.50, 2018: 0.30, 2014: 0.20}
+    # 動態權重：有真實民調 → 民調 55%, 歷史 30%, 基本盤 15%
+    #           有模擬民調 → 民調 30%, 歷史 45%, 基本盤 25%
+    #           無民調     → 歷史 60%, 基本盤 40%
+    if has_real_polls:
+        w_poll, w_hist, w_pres = 0.55, 0.30, 0.15
+        data_quality = "real_polls"
+    elif poll_count > 0:
+        w_poll, w_hist, w_pres = 0.30, 0.45, 0.25
+        data_quality = "simulated_polls"
+    else:
+        w_poll, w_hist, w_pres = 0.0, 0.60, 0.40
+        data_quality = "history_only"
+
     party_scores = {}
 
     for party in MAJOR_PARTIES:
-        weighted_sum = 0
-        weight_total = 0
-        for year, w in weights.items():
-            if year in local_history and party in local_history[year]:
-                weighted_sum += local_history[year][party] * w
-                weight_total += w
+        hist_score = _compute_historical_score(local_history, pres_base, party)
+        poll_score = poll_rates.get(party, 0)
+        pres_score = pres_base.get(party, 0)
 
-        if weight_total > 0:
-            local_trend = weighted_sum / weight_total
+        # 加權組合
+        if w_poll > 0 and poll_score > 0:
+            base_score = poll_score * w_poll + hist_score * w_hist + pres_score * w_pres
         else:
-            local_trend = 0
+            base_score = hist_score * (w_hist + w_poll) + pres_score * w_pres
 
-        pres_rate = pres_base.get(party, 0)
-
-        # 組合：地方趨勢 60% + 總統基本盤 40%
-        base_score = local_trend * 0.6 + pres_rate * 0.4
-
-        # 鐘擺效應：中央執政黨 (民進黨) 在地方選舉通常 -3~5%
-        if party == "民主進步黨":
-            base_score -= 2.5  # 執政黨鐘擺
-
-        # 在任者效應
+        # 在任者效應 (縮小)
         if incumbent and incumbent[1] == party:
-            base_score += 2.0  # 在任優勢（知名度、資源）
-
-        # 台灣民眾黨成長趨勢 (2022→2024 上升中)
-        if party == "台灣民眾黨":
             base_score += 1.5
 
         party_scores[party] = max(base_score, 1.0)
 
     # 其他/無黨籍
-    other_rate = max(100 - sum(party_scores.values()), 5.0)
+    other_from_poll = sum(
+        v for k, v in poll_rates.items()
+        if k not in MAJOR_PARTIES and k != "未決定"
+    )
+    other_rate = max(other_from_poll, max(100 - sum(party_scores.values()), 3.0))
     party_scores["其他/無黨籍"] = other_rate
 
-    # 正規化到 100%
+    # 正規化
     total = sum(party_scores.values())
     for party in party_scores:
         party_scores[party] = round(party_scores[party] / total * 100, 1)
 
-    # 信心指數：有越多屆歷史資料 → 越高信心
-    data_points = sum(1 for y in [2014, 2018, 2022] if y in local_history)
-    has_pres = 1 if pres_base else 0
-    confidence = min(round((data_points * 25 + has_pres * 15 + 10) * 1.0, 1), 95.0)
+    # 信心指數
+    history_points = sum(1 for y in [2014, 2018, 2022] if y in local_history)
+    base_confidence = history_points * 15 + (15 if pres_base else 0)
+    if has_real_polls:
+        base_confidence += poll_count * 15  # 真實民調大幅提升信心
+    elif poll_count > 0:
+        base_confidence += poll_count * 5   # 模擬民調小幅提升
+    confidence = min(round(base_confidence + 10, 1), 95.0)
 
-    # 判定預測勝選方
+    # 勝選判定
     predicted_winner_party = max(
         [p for p in MAJOR_PARTIES if p in party_scores],
         key=lambda p: party_scores.get(p, 0),
     )
 
-    # 勝選機率 (基於得票差距)
+    # 勝選機率
     sorted_parties = sorted(party_scores.items(), key=lambda x: -x[1])
     if len(sorted_parties) >= 2:
         gap = sorted_parties[0][1] - sorted_parties[1][1]
@@ -178,13 +239,24 @@ def predict_region(db: Session, region_code: str) -> dict:
     else:
         win_probability = 70.0
 
+    # 民調 vs 模型差距
+    poll_vs_model = {}
+    if poll_rates:
+        for party in MAJOR_PARTIES:
+            p_rate = poll_rates.get(party, 0)
+            m_rate = party_scores.get(party, 0)
+            if p_rate > 0:
+                poll_vs_model[party] = {
+                    "poll": round(p_rate, 1),
+                    "model": m_rate,
+                    "diff": round(m_rate - p_rate, 1),
+                }
+
     # 歷史趨勢
-    trend = []
-    for year in sorted(local_history.keys()):
-        trend.append({
-            "year": year,
-            "parties": local_history[year],
-        })
+    trend = [
+        {"year": y, "parties": local_history[y]}
+        for y in sorted(local_history.keys())
+    ]
 
     return {
         "region_code": region_code,
@@ -198,12 +270,15 @@ def predict_region(db: Session, region_code: str) -> dict:
         "predicted_winner": predicted_winner_party,
         "win_probability": round(win_probability, 1),
         "confidence": confidence,
+        "data_quality": data_quality,
+        "poll_count": poll_count,
+        "has_real_polls": has_real_polls,
+        "poll_vs_model": poll_vs_model,
         "factors": {
-            "local_history_weight": 0.6,
-            "presidential_base_weight": 0.4,
-            "pendulum_effect": -2.5,
-            "incumbency_bonus": 2.0,
-            "tpp_growth": 1.5,
+            "poll_weight": w_poll,
+            "history_weight": w_hist,
+            "presidential_weight": w_pres,
+            "incumbency_bonus": 1.5,
         },
         "history": trend,
     }
@@ -222,7 +297,7 @@ def predict_all(db: Session) -> list[dict]:
 
 
 def get_prediction_summary(db: Session) -> dict:
-    """預測總覽 — 各黨預估席次"""
+    """預測總覽"""
     all_preds = predict_all(db)
 
     party_seats = {}
@@ -234,19 +309,22 @@ def get_prediction_summary(db: Session) -> dict:
             party_regions[winner] = []
         party_regions[winner].append(pred["region_name"])
 
-    battlegrounds = [
-        p for p in all_preds
-        if p["win_probability"] < 65
-    ]
+    battlegrounds = [p for p in all_preds if p["win_probability"] < 65]
     battlegrounds.sort(key=lambda x: x["win_probability"])
+
+    # 資料品質統計
+    quality_stats = {
+        "real_polls": sum(1 for p in all_preds if p["data_quality"] == "real_polls"),
+        "simulated_polls": sum(1 for p in all_preds if p["data_quality"] == "simulated_polls"),
+        "history_only": sum(1 for p in all_preds if p["data_quality"] == "history_only"),
+    }
 
     return {
         "prediction_year": 2026,
         "total_seats": len(all_preds),
         "party_seats": party_seats,
         "party_regions": party_regions,
-        "battlegrounds": battlegrounds[:6],
-        "avg_confidence": round(
-            np.mean([p["confidence"] for p in all_preds]), 1
-        ),
+        "battlegrounds": battlegrounds[:8],
+        "avg_confidence": round(np.mean([p["confidence"] for p in all_preds]), 1),
+        "data_quality": quality_stats,
     }
