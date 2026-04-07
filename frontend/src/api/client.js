@@ -74,3 +74,18 @@ export async function getPollTrend(code) {
   const res = await api.get(`/polls/${code}/trend`);
   return res.data;
 }
+
+export async function getDashboard() {
+  const res = await api.get("/dashboard/");
+  return res.data;
+}
+
+export async function getLegislativeSeats() {
+  const res = await api.get("/legislative/seats");
+  return res.data;
+}
+
+export async function getLegislativeTrend() {
+  const res = await api.get("/legislative/trend");
+  return res.data;
+}
