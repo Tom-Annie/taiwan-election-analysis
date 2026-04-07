@@ -3,9 +3,10 @@ import Sidebar from "./components/Sidebar";
 import ElectionMap from "./components/ElectionMap";
 import TrendChart from "./components/TrendChart";
 import ComparePanel from "./components/ComparePanel";
+import PredictionPanel from "./components/PredictionPanel";
 import { getElections, getElection, getRegions } from "./api/client";
 
-const TABS = ["地圖", "趨勢", "比較"];
+const TABS = ["地圖", "趨勢", "比較", "2026預測"];
 
 export default function App() {
   const [elections, setElections] = useState([]);
@@ -81,6 +82,9 @@ export default function App() {
               elections={elections}
               regions={regions}
             />
+          )}
+          {activeTab === "2026預測" && (
+            <PredictionPanel />
           )}
         </main>
       </div>

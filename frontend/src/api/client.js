@@ -44,3 +44,18 @@ export async function compareElections(electionIds, regionCodes) {
   });
   return res.data;
 }
+
+export async function getPredictions() {
+  const res = await api.get("/predictions/");
+  return res.data;
+}
+
+export async function getPredictionSummary() {
+  const res = await api.get("/predictions/summary");
+  return res.data;
+}
+
+export async function getRegionPrediction(code) {
+  const res = await api.get(`/predictions/${code}`);
+  return res.data;
+}

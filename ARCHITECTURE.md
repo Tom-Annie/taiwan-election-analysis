@@ -14,10 +14,13 @@ taiwan-election-analysis/
 │   │   │   ├── elections.py # /api/elections — 選舉列表、詳情、結果、政黨趨勢
 │   │   │   ├── regions.py   # /api/regions — 區域列表、歷史趨勢
 │   │   │   └── compare.py   # /api/compare — 跨屆跨區比較
+│   │   │   └── prediction.py # /api/predictions — 2026 選舉預測
 │   │   └── services/
-│   │       └── analysis.py  # 搖擺區分析、投票率趨勢
+│   │       ├── analysis.py  # 搖擺區分析、投票率趨勢
+│   │       └── prediction.py # 預測模型（加權趨勢+鐘擺+在任者效應）
 │   ├── seeds/
-│   │   └── seed_data.py     # 種子資料 (1996-2024 總統選舉)
+│   │   ├── seed_data.py     # 種子資料 (1996-2024 總統選舉)
+│   │   └── seed_mayoral.py  # 2014/2018/2022 縣市長選舉
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/                 # React + Vite 前端
@@ -28,8 +31,9 @@ taiwan-election-analysis/
 │   │   └── components/
 │   │       ├── Sidebar.jsx      # 選舉/區域選擇 + 候選人結果
 │   │       ├── ElectionMap.jsx  # Leaflet 地圖（圓點標記）
-│   │       ├── TrendChart.jsx   # Recharts 折線/長條圖
-│   │       └── ComparePanel.jsx # 跨屆比較面板
+│   │       ├── TrendChart.jsx       # Recharts 折線/長條圖
+│   │       ├── ComparePanel.jsx    # 跨屆比較面板
+│   │       └── PredictionPanel.jsx # 2026 預測儀表板
 │   ├── package.json
 │   ├── vite.config.js       # dev proxy -> backend:8000
 │   └── Dockerfile
@@ -55,6 +59,9 @@ taiwan-election-analysis/
 | GET | /api/regions/ | 區域列表 |
 | GET | /api/regions/:code/history | 特定區域歷屆結果 |
 | POST | /api/compare/ | 跨屆跨區比較 |
+| GET | /api/predictions/ | 全縣市 2026 預測 |
+| GET | /api/predictions/summary | 預測總覽（席次、搖擺區） |
+| GET | /api/predictions/:code | 單一縣市預測詳情 |
 
 ## 技術選型
 
@@ -62,3 +69,15 @@ taiwan-election-analysis/
 - **後端**: Python 3.12 + FastAPI + SQLAlchemy 2.0
 - **前端**: React 18 + Vite + Recharts + React-Leaflet
 - **部署**: Docker Compose
+
+## 預測模型
+
+2026 九合一縣市長選舉預測，使用以下加權模型：
+
+- **地方選舉歷史趨勢** (60%): 2022 權重 50%, 2018 權重 30%, 2014 權重 20%
+- **2024 總統選舉基本盤** (40%): 各區域政黨得票率
+- **修正因子**:
+  - 執政黨鐘擺效應: -2.5% (中央執政的民進黨)
+  - 在任者優勢: +2.0%
+  - 民眾黨成長修正: +1.5%
+- 輸出: 各黨預測得票率、勝選機率、信心指數
