@@ -59,3 +59,18 @@ export async function getRegionPrediction(code) {
   const res = await api.get(`/predictions/${code}`);
   return res.data;
 }
+
+export async function getPollSummary() {
+  const res = await api.get("/polls/summary");
+  return res.data;
+}
+
+export async function getRegionPolls(code) {
+  const res = await api.get(`/polls/${code}`);
+  return res.data;
+}
+
+export async function getPollTrend(code) {
+  const res = await api.get(`/polls/${code}/trend`);
+  return res.data;
+}

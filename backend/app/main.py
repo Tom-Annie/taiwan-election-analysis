@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import engine, Base
-from .routers import elections, regions, compare, prediction
+from .routers import elections, regions, compare, prediction, polls
 
 Base.metadata.create_all(bind=engine)
 
@@ -24,6 +24,7 @@ app.include_router(elections.router)
 app.include_router(regions.router)
 app.include_router(compare.router)
 app.include_router(prediction.router)
+app.include_router(polls.router)
 
 
 @app.get("/")

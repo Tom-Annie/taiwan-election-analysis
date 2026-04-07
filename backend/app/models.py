@@ -72,3 +72,32 @@ class RegionResult(Base):
     election = relationship("Election", back_populates="results")
     region = relationship("Region", back_populates="results")
     candidate = relationship("Candidate")
+
+
+class Poll(Base):
+    """民調資料"""
+    __tablename__ = "polls"
+
+    id = Column(Integer, primary_key=True, index=True)
+    region_code = Column(String, ForeignKey("regions.code"), nullable=False)
+    election_type = Column(String, nullable=False)  # local, presidential
+    date = Column(String, nullable=False)  # 民調日期
+    source = Column(String, nullable=False)  # 民調機構
+    sample_size = Column(Integer)
+    margin_of_error = Column(Float)
+
+    items = relationship("PollItem", back_populates="poll")
+    region = relationship("Region")
+
+
+class PollItem(Base):
+    """民調各候選人/政黨數據"""
+    __tablename__ = "poll_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    poll_id = Column(Integer, ForeignKey("polls.id"), nullable=False)
+    candidate_name = Column(String)
+    party = Column(String, nullable=False)
+    support_rate = Column(Float, nullable=False)
+
+    poll = relationship("Poll", back_populates="items")
