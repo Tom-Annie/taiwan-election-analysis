@@ -1,0 +1,134 @@
+import React, { useState, useEffect } from "react";
+import Sidebar from "./components/Sidebar";
+import ElectionMap from "./components/ElectionMap";
+import TrendChart from "./components/TrendChart";
+import ComparePanel from "./components/ComparePanel";
+import { getElections, getElection, getRegions } from "./api/client";
+
+const TABS = ["地圖", "趨勢", "比較"];
+
+export default function App() {
+  const [elections, setElections] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [selectedElection, setSelectedElection] = useState(null);
+  const [selectedRegion, setSelectedRegion] = useState(null);
+  const [activeTab, setActiveTab] = useState("地圖");
+
+  useEffect(() => {
+    getElections().then(setElections);
+    getRegions("city").then(setRegions);
+  }, []);
+
+  useEffect(() => {
+    if (elections.length > 0 && !selectedElection) {
+      getElection(elections[0].id).then(setSelectedElection);
+    }
+  }, [elections]);
+
+  const handleSelectElection = async (id) => {
+    const detail = await getElection(id);
+    setSelectedElection(detail);
+  };
+
+  return (
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <h1 style={styles.title}>台灣選舉分析系統</h1>
+        <nav style={styles.nav}>
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                ...styles.tabBtn,
+                ...(activeTab === tab ? styles.tabActive : {}),
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      <div style={styles.body}>
+        <Sidebar
+          elections={elections}
+          selectedElection={selectedElection}
+          onSelectElection={handleSelectElection}
+          selectedRegion={selectedRegion}
+          onSelectRegion={setSelectedRegion}
+          regions={regions}
+        />
+
+        <main style={styles.main}>
+          {activeTab === "地圖" && (
+            <ElectionMap
+              election={selectedElection}
+              regions={regions}
+              selectedRegion={selectedRegion}
+              onSelectRegion={setSelectedRegion}
+            />
+          )}
+          {activeTab === "趨勢" && (
+            <TrendChart
+              elections={elections}
+              selectedRegion={selectedRegion}
+            />
+          )}
+          {activeTab === "比較" && (
+            <ComparePanel
+              elections={elections}
+              regions={regions}
+            />
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  container: {
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    margin: 0,
+    backgroundColor: "#f5f5f5",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 24px",
+    backgroundColor: "#1a1a2e",
+    color: "#fff",
+  },
+  title: { margin: 0, fontSize: "1.3rem" },
+  nav: { display: "flex", gap: "4px" },
+  tabBtn: {
+    padding: "8px 20px",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "0.9rem",
+    backgroundColor: "transparent",
+    color: "#aaa",
+    transition: "all 0.2s",
+  },
+  tabActive: {
+    backgroundColor: "#16213e",
+    color: "#fff",
+  },
+  body: {
+    display: "flex",
+    flex: 1,
+    overflow: "hidden",
+  },
+  main: {
+    flex: 1,
+    overflow: "auto",
+    padding: "16px",
+  },
+};
