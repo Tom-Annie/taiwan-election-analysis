@@ -15,8 +15,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("地圖");
 
   useEffect(() => {
-    getElections().then(setElections);
-    getRegions("city").then(setRegions);
+    getElections().then(setElections).catch(console.error);
+    getRegions("city").then(setRegions).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -73,6 +73,7 @@ export default function App() {
             <TrendChart
               elections={elections}
               selectedRegion={selectedRegion}
+              regions={regions}
             />
           )}
           {activeTab === "比較" && (

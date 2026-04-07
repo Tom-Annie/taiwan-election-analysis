@@ -23,7 +23,7 @@ const PARTY_COLORS = {
   無黨籍: "#999999",
 };
 
-export default function TrendChart({ elections, selectedRegion }) {
+export default function TrendChart({ elections, selectedRegion, regions }) {
   const [trendData, setTrendData] = useState([]);
   const [chartType, setChartType] = useState("line");
 
@@ -59,7 +59,9 @@ export default function TrendChart({ elections, selectedRegion }) {
     <div style={styles.container}>
       <div style={styles.header}>
         <h2 style={styles.title}>
-          {selectedRegion ? `${selectedRegion} 區域趨勢` : "全國政黨得票率趨勢"}
+          {selectedRegion
+            ? `${regions?.find((r) => r.code === selectedRegion)?.name || selectedRegion} 區域趨勢`
+            : "全國政黨得票率趨勢"}
         </h2>
         <div style={styles.toggleGroup}>
           <button
@@ -88,7 +90,7 @@ export default function TrendChart({ elections, selectedRegion }) {
           <LineChart data={trendData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="year" />
-            <YAxis unit="%" domain={[0, 70]} />
+            <YAxis unit="%" domain={[0, "auto"]} />
             <Tooltip formatter={(v) => `${v?.toFixed(2)}%`} />
             <Legend />
             {allParties.map((party) => (
@@ -107,7 +109,7 @@ export default function TrendChart({ elections, selectedRegion }) {
           <BarChart data={trendData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="year" />
-            <YAxis unit="%" domain={[0, 70]} />
+            <YAxis unit="%" domain={[0, "auto"]} />
             <Tooltip formatter={(v) => `${v?.toFixed(2)}%`} />
             <Legend />
             {allParties.map((party) => (

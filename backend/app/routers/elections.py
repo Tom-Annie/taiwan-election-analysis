@@ -21,37 +21,6 @@ def list_elections(
     return q.order_by(models.Election.year.desc()).all()
 
 
-@router.get("/{election_id}", response_model=schemas.ElectionDetailOut)
-def get_election(election_id: int, db: Session = Depends(get_db)):
-    election = db.query(models.Election).get(election_id)
-    if not election:
-        raise HTTPException(404, "Election not found")
-    return election
-
-
-@router.get("/{election_id}/results", response_model=list[schemas.RegionResultOut])
-def get_election_results(
-    election_id: int,
-    region_code: str | None = None,
-    db: Session = Depends(get_db),
-):
-    q = db.query(models.RegionResult).filter(
-        models.RegionResult.election_id == election_id
-    )
-    if region_code:
-        q = q.filter(models.RegionResult.region_code == region_code)
-
-    rows = q.all()
-    results = []
-    for r in rows:
-        item = schemas.RegionResultOut.model_validate(r)
-        if r.candidate:
-            item.candidate_name = r.candidate.name
-            item.candidate_party = r.candidate.party
-        results.append(item)
-    return results
-
-
 @router.get("/parties/trend", response_model=list[schemas.PartyTrendItem])
 def get_party_trend(
     type: str = "presidential",
@@ -80,4 +49,37 @@ def get_party_trend(
                     vote_rate=round(votes / total * 100, 2),
                 )
             )
+    return results
+
+
+@router.get("/{election_id}", response_model=schemas.ElectionDetailOut)
+def get_election(election_id: int, db: Session = Depends(get_db)):
+    election = (
+        db.query(models.Election).filter(models.Election.id == election_id).first()
+    )
+    if not election:
+        raise HTTPException(404, "Election not found")
+    return election
+
+
+@router.get("/{election_id}/results", response_model=list[schemas.RegionResultOut])
+def get_election_results(
+    election_id: int,
+    region_code: str | None = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(models.RegionResult).filter(
+        models.RegionResult.election_id == election_id
+    )
+    if region_code:
+        q = q.filter(models.RegionResult.region_code == region_code)
+
+    rows = q.all()
+    results = []
+    for r in rows:
+        item = schemas.RegionResultOut.model_validate(r)
+        if r.candidate:
+            item.candidate_name = r.candidate.name
+            item.candidate_party = r.candidate.party
+        results.append(item)
     return results
